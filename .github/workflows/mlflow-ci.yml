@@ -1,0 +1,88 @@
+name: MLflow CI Pipeline
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  ml-pipeline:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Run actions/checkout@v3
+        uses: actions/checkout@v3
+
+      - name: Set up Python 3.12.7
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.7'
+
+      - name: Check Env
+        run: |
+          echo "Python version:"
+          python --version
+          echo "Pip version:"
+          pip --version
+          echo "OS Info:"
+          uname -a
+          echo "Docker version:"
+          docker --version
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install mlflow scikit-learn pandas numpy matplotlib seaborn
+
+      - name: Run mlflow project
+        run: |
+          mlflow run MLProject/ --env-manager=local
+
+      - name: Get latest MLflow run_id
+        id: get_run_id
+        run: |
+          RUN_ID=$(cat MLProject/run_id.txt)
+          echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
+          echo "Latest MLflow Run ID: $RUN_ID"
+
+      - name: Install Python dependencies
+        run: |
+          pip install virtualenv
+
+      - name: Upload to GitHub
+        run: |
+          mkdir -p model_artifacts
+          ARTIFACTS_DIR=$(find MLProject/mlruns -path "*/${{ steps.get_run_id.outputs.run_id }}/artifacts" -type d | head -1)
+          echo "Artifacts directory: $ARTIFACTS_DIR"
+          cp -r $ARTIFACTS_DIR/* model_artifacts/
+          echo "Artifacts copied successfully"
+          ls -la model_artifacts/
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add model_artifacts/
+          git diff --staged --quiet || git commit -m "Upload model artifacts from run ${{ steps.get_run_id.outputs.run_id }} [automated]"
+          git push
+
+      - name: Build Docker Model
+        working-directory: MLProject
+        run: |
+          mlflow models build-docker \
+            -m "runs:/${{ steps.get_run_id.outputs.run_id }}/model" \
+            -n "workflow-ci-titanic"
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Tag Docker Image
+        run: |
+          docker tag workflow-ci-titanic ${{ secrets.DOCKERHUB_USERNAME }}/workflow-ci-titanic:latest
+
+      - name: Push Docker Image
+        run: |
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/workflow-ci-titanic:latest

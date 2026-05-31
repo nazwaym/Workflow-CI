@@ -1,0 +1,18 @@
+# MLflow tracking files
+mlruns/
+mlflow.db
+mlartifacts/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Temp files from modelling
+MLProject/confusion_matrix.png
+MLProject/metric_info.json
+MLProject/run_id.txt
+
+# OS files
+.DS_Store
+Thumbs.db
