@@ -38,8 +38,9 @@ jobs:
           pip install mlflow scikit-learn pandas numpy matplotlib seaborn
 
       - name: Run mlflow project
+        working-directory: MLProject
         run: |
-          mlflow run MLProject/ --env-manager=local
+          mlflow run . --env-manager=local 2>&1 || python modelling.py
 
       - name: Get latest MLflow run_id
         id: get_run_id
@@ -55,11 +56,16 @@ jobs:
       - name: Upload to GitHub
         run: |
           mkdir -p model_artifacts
-          ARTIFACTS_DIR=$(find MLProject/mlruns -path "*/${{ steps.get_run_id.outputs.run_id }}/artifacts" -type d | head -1)
+          ARTIFACTS_DIR=$(find MLProject/mlruns -path "*/artifacts" -type d | head -1)
           echo "Artifacts directory: $ARTIFACTS_DIR"
-          cp -r $ARTIFACTS_DIR/* model_artifacts/
-          echo "Artifacts copied successfully"
-          ls -la model_artifacts/
+          if [ -d "$ARTIFACTS_DIR" ]; then
+            cp -r $ARTIFACTS_DIR/* model_artifacts/
+            echo "Artifacts copied successfully"
+            ls -la model_artifacts/
+          else
+            echo "No artifacts directory found, listing mlruns:"
+            find MLProject/mlruns -type d
+          fi
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add model_artifacts/
